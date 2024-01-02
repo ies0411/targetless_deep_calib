@@ -521,14 +521,14 @@ class LCCNet(nn.Module):
         # encoder
         if self.pretrained_encoder:
             # rgb_image
-            features1 = self.net_encoder(rgb)
+            features1 = self.net_encoder(rgb)  # Resnet
             c12 = features1[0]  # 2
             c13 = features1[2]  # 4
             c14 = features1[3]  # 8
             c15 = features1[4]  # 16
             c16 = features1[5]  # 32
             # lidar_image
-            x2 = self.conv1_lidar(lidar)
+            x2 = self.conv1_lidar(lidar)  # lidar : depth image
             if self.Action_Func == "leakyrelu":
                 c22 = self.leakyRELU_lidar(x2)  # 2
             elif self.Action_Func == "elu":
