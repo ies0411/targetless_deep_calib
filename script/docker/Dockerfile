@@ -17,7 +17,7 @@ RUN pip install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1
 ENV TORCH_CUDA_ARCH_LIST="3.5;5.0;6.0;6.1;7.0;7.5;8.0;8.6+PTX;Kepler;Kepler+Tesla;Maxwell;Maxwell+Tegra;Pascal;Volta;Turing;8.6"
 
 
-RUN pip install sacred Pillow pykitti scipy matplotlib h5py pandas scikit_image tqdm numpy  opencv-python tensorboardX easydict pyyaml open3d pyquaternion
+RUN pip install pykitti sacred Pillow pykitti scipy matplotlib h5py pandas scikit_image tqdm numpy  opencv-python tensorboardX easydict pyyaml open3d pyquaternion
 # kornia==0.6.8 nuscenes-devkit==1.0.5
 # spconv-cu116
 # cupy_cuda90==6.0.0
