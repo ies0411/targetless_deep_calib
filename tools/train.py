@@ -1,10 +1,9 @@
-import math
-import os
+# import math
+# import os
 import random
 import time
+from pathlib import Path
 
-# import apex
-# import mathutils
 import numpy as np
 import torch
 import torch.nn as nn
@@ -12,222 +11,96 @@ import torch.nn.functional as F
 import torch.nn.parallel
 import torch.optim as optim
 import torch.utils.data
-from datasets.kitti_loader import DatasetLidarCameraKittiOdometry
+from dataset import build_dataloader
 from losses import CombinedLoss
+from models import build_network
 
 # DistancePoints3D, GeometricLoss, L1Loss, ProposedLoss, CombinedLoss
-from models.LCCNet import LCCNet
+# from models.LCCNet import LCCNet
 from quaternion_distances import quaternion_distance
+from utils.utils import cfg_from_yaml_file
+
+from workspace.targetless_calib.datasets.kitti_odom import (
+    DatasetLidarCameraKittiOdometry,
+)
 
 # from tensorboardX import SummaryWriter
 from workspace.targetless_calib.utils.utils import (
-    merge_inputs,
-    overlay_imgs,
-    quat2mat,
     rotate_back,
-    rotate_forward,
-    tvector2mat,
-)
+)  # merge_inputs,; overlay_imgs,; quat2mat,; rotate_forward,; tvector2mat,
 
-torch.backends.cudnn.enabled = True
-torch.backends.cudnn.benchmark = False
-
-# ex = Experiment("LCCNet")
-# ex.captured_out_filter = apply_backspaces_and_linefeeds
+# torch.backends.cudnn.enabled = True
+# torch.backends.cudnn.benchmark = False
 
 
-# noinspection PyUnusedLocal
-# @ex.config
-def config():
-    checkpoints = "./checkpoints/"
-    dataset = "kitti/odom"  # 'kitti/raw'
-    data_folder = "/home/wangshuo/Datasets/KITTI/odometry/data_odometry_full/"
-    output_dir = "./"
-    use_reflectance = False
-    val_sequence = 0
-    epochs = 120
-    BASE_LEARNING_RATE = 3e-4  # 1e-4
-    loss = "combined"
-    max_t = 0.1  # 1.5, 1.0,  0.5,  0.2,  0.1
-    max_r = 1.0  # 20.0, 10.0, 5.0,  2.0,  1.0
-    batch_size = 240  # 120
-    num_worker = 6
-    network = "Res_f1"
-    optimizer = "adam"
-    resume = True
-    weights = "./pretrained/kitti/kitti_iter5.tar"
-    rescale_rot = 1.0
-    rescale_transl = 2.0
-    precision = "O0"
-    norm = "bn"
-    dropout = 0.0
-    max_depth = 80.0
-    weight_point_cloud = 0.5
-    log_frequency = 10
-    print_frequency = 50
-    starting_epoch = -1
-    seed = 40
-
-
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3"
-
-
-# EPOCH = 1
-
-
-def _init_fn(worker_id, seed):
-    seed = seed + worker_id * 100
-    print(f"Init worker {worker_id} with seed {seed}")
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-    random.seed(seed)
-
-
-def get_2D_lidar_projection(pcl, cam_intrinsic):
-    pcl_xyz = cam_intrinsic @ pcl.T
-    pcl_xyz = pcl_xyz.T
-    pcl_z = pcl_xyz[:, 2]
-    pcl_xyz = pcl_xyz / (pcl_xyz[:, 2, None] + 1e-10)
-    pcl_uv = pcl_xyz[:, :2]
-
-    return pcl_uv, pcl_z
-
-
-def lidar_project_depth(pc_rotated, cam_calib, img_shape):
-    pc_rotated = pc_rotated[:3, :].detach().cpu().numpy()
-    cam_intrinsic = cam_calib.numpy()
-    pcl_uv, pcl_z = get_2D_lidar_projection(pc_rotated.T, cam_intrinsic)
-    mask = (
-        (pcl_uv[:, 0] > 0)
-        & (pcl_uv[:, 0] < img_shape[1])
-        & (pcl_uv[:, 1] > 0)
-        & (pcl_uv[:, 1] < img_shape[0])
-        & (pcl_z > 0)
-    )
-    pcl_uv = pcl_uv[mask]
-    pcl_z = pcl_z[mask]
-    pcl_uv = pcl_uv.astype(np.uint32)
-    pcl_z = pcl_z.reshape(-1, 1)
-    depth_img = np.zeros((img_shape[0], img_shape[1], 1))
-    depth_img[pcl_uv[:, 1], pcl_uv[:, 0]] = pcl_z
-    depth_img = torch.from_numpy(depth_img.astype(np.float32))
-    depth_img = depth_img.cuda()
-    depth_img = depth_img.permute(2, 0, 1)
-
-    return depth_img, pcl_uv
-
-
-# CCN training
-# @ex.capture
-def train(
-    model,
-    optimizer,
-    rgb_img,
-    refl_img,
-    target_transl,
-    target_rot,
-    loss_fn,
-    point_clouds,
-    loss,
-):
-    model.train()
-
-    optimizer.zero_grad()
-
-    # Run model
-    transl_err, rot_err = model(rgb_img, refl_img)
-
-    if loss == "points_distance" or loss == "combined":
-        losses = loss_fn(point_clouds, target_transl, target_rot, transl_err, rot_err)
-    else:
-        losses = loss_fn(target_transl, target_rot, transl_err, rot_err)
-
-    losses["total_loss"].backward()
-    optimizer.step()
-
-    return losses, rot_err, transl_err
-
-
-# CNN test
-# @ex.capture
-def val(
-    model, rgb_img, refl_img, target_transl, target_rot, loss_fn, point_clouds, loss
-):
-    model.eval()
-
-    # Run model
-    with torch.no_grad():
-        transl_err, rot_err = model(rgb_img, refl_img)
-
-    if loss == "points_distance" or loss == "combined":
-        losses = loss_fn(point_clouds, target_transl, target_rot, transl_err, rot_err)
-    else:
-        losses = loss_fn(target_transl, target_rot, transl_err, rot_err)
-
-    # if loss != 'points_distance':
-    #     total_loss = loss_fn(target_transl, target_rot, transl_err, rot_err)
-    # else:
-    #     total_loss = loss_fn(point_clouds, target_transl, target_rot, transl_err, rot_err)
-
-    total_trasl_error = torch.tensor(0.0)
-    total_rot_error = quaternion_distance(target_rot, rot_err, target_rot.device)
-    total_rot_error = total_rot_error * 180.0 / math.pi
-    for j in range(rgb_img.shape[0]):
-        total_trasl_error += torch.norm(target_transl[j] - transl_err[j]) * 100.0
-
-    # # output image: The overlay image of the input rgb image and the projected lidar pointcloud depth image
-    # cam_intrinsic = camera_model[0]
-    # rotated_point_cloud =
-    # R_predicted = quat2mat(R_predicted[0])
-    # T_predicted = tvector2mat(T_predicted[0])
-    # RT_predicted = torch.mm(T_predicted, R_predicted)
-    # rotated_point_cloud = rotate_forward(rotated_point_cloud, RT_predicted)
-
-    return (
-        losses,
-        total_trasl_error.item(),
-        total_rot_error.sum().item(),
-        rot_err,
-        transl_err,
-    )
-
-
-# @ex.automain
 def main():
-    # global EPOCH
-    # print("Loss Function Choice: {}".format(_config["loss"]))
+    cfg = cfg_from_yaml_file()
+    # params
+    epochs = cfg.OPTIMIZATION.NUM_EPOCHS
+    batch_size = cfg.OPTIMIZATION.BATCH_SIZE_PER_GPU
+    output_dir = Path(cfg.DATA_CONFIG.OUTPUT_DIR).resolve()
+    ckpt_dir = output_dir / "ckpt"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
 
-    # if _config["val_sequence"] is None:
-    #     raise TypeError("val_sequences cannot be None")
-    # else:
-    #     _config["val_sequence"] = f"{_config['val_sequence']:02d}"
-    #     print("Val Sequence: ", _config["val_sequence"])
-    config = ""
-    dataset_class = DatasetLidarCameraKittiOdometry
-    img_shape = (384, 1280)
-    input_size = (256, 512)
+    train_set, train_loader, train_sampler = build_dataloader(
+        cfg.DATA_CONFIG, batch_size=batch_size, training=True
+    )
+
+    model = build_network(cfg.MODEL, dataset=train_set)
+    # feat = 1
+    # md = 4
+    # model = LCCNet(
+    #     input_size,
+    #     use_feat_from=feat,
+    #     md=md,
+    #     use_reflectance=config["use_reflectance"],
+    #     dropout=config["dropout"],
+    #     Action_Func="leakyrelu",
+    #     attention=False,
+    #     res_num=18,
+    # )
+    loss_fn = CombinedLoss(
+        cfg.RESCALE_TRANSLATION,
+        cfg.RESCALE_ROTATION,
+        cfg.WEIGHT_POINTCLOUD,
+    )
+    model = model.cuda()
+    parameters = list(filter(lambda p: p.requires_grad, model.parameters()))
+    optimizer = optim.Adam(parameters, lr=cfg.LR, weight_decay=cfg.WEIGHT_DECAY)
+    # Probably this scheduler is not used
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(
+        optimizer, milestones=[20, 50, 70], gamma=0.5
+    )
+    # rescale_transl
+    # config["rescale_transl"],
+    # config["rescale_rot"],
+    # config["weight_point_cloud"],
+
+    # DatasetLidarCameraKittiOdometry
+    # img_shape = (384, 1280)
+    # input_size = (256, 512)
     # config["checkpoints"] = os.path.join(config["checkpoints"], _conf"])
 
-    dataset_train = dataset_class(
-        config["data_folder"],
-        max_r=config["max_r"],
-        max_t=config["max_t"],
-        split="train",
-        use_reflectance=config["use_reflectance"],
-        val_sequence=config["val_sequence"],
-    )
-    dataset_val = dataset_class(
-        config["data_folder"],
-        max_r=config["max_r"],
-        max_t=config["max_t"],
-        split="val",
-        use_reflectance=config["use_reflectance"],
-        val_sequence=config["val_sequence"],
-    )
-    model_savepath = config["output_dir"]
-    if not os.path.exists(model_savepath):
-        os.makedirs(model_savepath)
+    # dataset_train = dataset_class(
+    #     config["data_folder"],
+    #     max_r=config["max_r"],
+    #     max_t=config["max_t"],
+    #     split="train",
+    #     use_reflectance=config["use_reflectance"],
+    #     val_sequence=config["val_sequence"],
+    # )
+    # dataset_val = dataset_class(
+    #     config["data_folder"],
+    #     max_r=config["max_r"],
+    #     max_t=config["max_t"],
+    #     split="val",
+    #     use_reflectance=config["use_reflectance"],
+    #     val_sequence=config["val_sequence"],
+    # )
+    # model_savepath = config["output_dir"]
+    # if not os.path.exists(model_savepath):
+    #     os.makedirs(model_savepath)
     # log_savepath = os.path.join(
     #     _config["checkpoints"], "val_seq_" + _config["val_sequence"], "log"
     # )
@@ -235,46 +108,37 @@ def main():
     #     os.makedirs(log_savepath)
     # train_writer = SummaryWriter(os.path.join(log_savepath, "train"))
     # val_writer = SummaryWriter(os.path.join(log_savepath, "val"))
-    seed = config["seed"]
-    np.random.seed(seed)
-    torch.random.manual_seed(seed)
 
-    def init_fn(x):
-        return _init_fn(x, seed)
-
-    train_dataset_size = len(dataset_train)
-    val_dataset_size = len(dataset_val)
-    print("Number of the train dataset: {}".format(train_dataset_size))
-    print("Number of the val dataset: {}".format(val_dataset_size))
+    # train_dataset_size = len(dataset_train)
+    # val_dataset_size = len(dataset_val)
+    # print("Number of the train dataset: {}".format(train_dataset_size))
+    # print("Number of the val dataset: {}".format(val_dataset_size))
 
     # Training and validation set creation
-    num_worker = config["num_worker"]
-    batch_size = config["batch_size"]
+    # num_worker = config["num_worker"]
+    # batch_size = config["batch_size"]
 
-    TrainImgLoader = torch.utils.data.DataLoader(
-        dataset=dataset_train,
-        shuffle=True,
-        batch_size=batch_size,
-        num_workers=num_worker,
-        worker_init_fn=init_fn,
-        collate_fn=merge_inputs,
-        drop_last=False,
-        pin_memory=True,
-    )
+    # TrainImgLoader = torch.utils.data.DataLoader(
+    #     dataset=dataset_train,
+    #     shuffle=True,
+    #     batch_size=batch_size,
+    #     num_workers=num_worker,
+    #     worker_init_fn=init_fn,
+    #     collate_fn=merge_inputs,
+    #     drop_last=False,
+    #     pin_memory=True,
+    # )
 
-    ValImgLoader = torch.utils.data.DataLoader(
-        dataset=dataset_val,
-        shuffle=False,
-        batch_size=batch_size,
-        num_workers=num_worker,
-        worker_init_fn=init_fn,
-        collate_fn=merge_inputs,
-        drop_last=False,
-        pin_memory=True,
-    )
-
-    print(len(TrainImgLoader))
-    print(len(ValImgLoader))
+    # ValImgLoader = torch.utils.data.DataLoader(
+    #     dataset=dataset_val,
+    #     shuffle=False,
+    #     batch_size=batch_size,
+    #     num_workers=num_worker,
+    #     worker_init_fn=init_fn,
+    #     collate_fn=merge_inputs,
+    #     drop_last=False,
+    #     pin_memory=True,
+    # )
 
     # loss function choice
     # if config["loss"] == "simple":
@@ -287,11 +151,7 @@ def main():
     # elif config["loss"] == "L1":
     #     loss_fn = L1Loss(config["rescale_transl"], config["rescale_rot"])
     # elif config["loss"] == "combined":
-    loss_fn = CombinedLoss(
-        config["rescale_transl"],
-        config["rescale_rot"],
-        config["weight_point_cloud"],
-    )
+
     # else:
     #     raise ValueError("Unknown Loss Function")
 
@@ -313,18 +173,7 @@ def main():
     #     assert 0 < feat < 7, "Feature Number from PWC have to be between 1 and 6"
     #     assert 0 < md, "md must be positive"
     # Res_f1
-    feat = 1
-    md = 4
-    model = LCCNet(
-        input_size,
-        use_feat_from=feat,
-        md=md,
-        use_reflectance=config["use_reflectance"],
-        dropout=config["dropout"],
-        Action_Func="leakyrelu",
-        attention=False,
-        res_num=18,
-    )
+
     # else:
     #     raise TypeError("Network unknown")
     if config["weights"] is not None:

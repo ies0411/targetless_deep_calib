@@ -1,0 +1,65 @@
+# labeling
+
+
+# CLASS_NAMES: ['Car', 'Pedestrian', 'Cyclist']
+
+DATA_CONFIG:
+    DATASET : 'KittiOdom' #KittiRaw
+    DATA_FOLDER : "/home/wangshuo/Datasets/KITTI/odometry/data_odometry_full/"
+    OUTPUT_DIR : "./"
+    WEIGHTS : False
+
+MODEL:
+    NAME: LCCNet
+    IMAGE_PRETRAINED : "RESNET"
+    LOSS_CONFIG: "combined"
+
+# def config():
+#     checkpoints = "./checkpoints/"
+#     dataset = "kitti/odom"  # 'kitti/raw'
+#
+#     use_reflectance = False
+#     val_sequence = 0
+#     max_t = 0.1  # 1.5, 1.0,  0.5,  0.2,  0.1
+#     max_r = 1.0  # 20.0, 10.0, 5.0,  2.0,  1.0
+#     batch_size = 240  # 120
+#     num_worker = 6
+#     network = "Res_f1"
+#     resume = True
+#     weights = "./pretrained/kitti/kitti_iter5.tar"
+#     rescale_rot = 1.0
+#     rescale_transl = 2.0
+#     precision = "O0"
+#     norm = "bn"
+#     dropout = 0.0
+#     max_depth = 80.0
+#     weight_point_cloud = 0.5
+#     log_frequency = 10
+#     print_frequency = 50
+#     starting_epoch = -1
+#     seed = 40
+
+# cfg.RESCALE_TRANSLATION,
+# cfg.RESCALE_ROTATION,
+# cfg.WEIGHT_POINTCLOUD,
+
+OPTIMIZATION:
+    BATCH_SIZE_PER_GPU: 2
+    NUM_EPOCHS: 140
+
+    OPTIMIZER: adam
+    LR: 3e-4
+    WEIGHT_DECAY: 0.001
+    MOMENTUM: 0.9
+
+    MOMS: [0.95, 0.85]
+    PCT_START: 0.4
+    DIV_FACTOR: 10
+    DECAY_STEP_LIST: [35, 45]
+    LR_DECAY: 0.1
+    LR_CLIP: 0.0000001
+
+    LR_WARMUP: False
+    WARMUP_EPOCH: 1
+
+    GRAD_NORM_CLIP: 10
