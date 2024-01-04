@@ -243,7 +243,7 @@ class ResnetEncoder(nn.Module):
             )
 
         self.encoder = resnets[num_layers](pretrained)
-
+        # num_layers=self.res_num, pretrained=True, num_input_images=1
         if num_layers > 34:
             self.num_ch_enc[1:] *= 4
 
@@ -270,7 +270,8 @@ class LCCNet(nn.Module):
 
     def __init__(
         self,
-        image_size,
+        # image_size,
+        cfg,
         use_feat_from=1,
         md=4,
         use_reflectance=False,
@@ -284,6 +285,7 @@ class LCCNet(nn.Module):
         """
         super(LCCNet, self).__init__()
         input_lidar = 1
+        image_size = cfg.DATA_CONFIG.IMAGE_SHAPE
         self.res_num = res_num
         self.use_feat_from = use_feat_from
         if use_reflectance:

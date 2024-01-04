@@ -5,8 +5,11 @@
 
 DATA_CONFIG:
     DATASET : 'KittiOdom' #KittiRaw
-    DATA_FOLDER : "/home/wangshuo/Datasets/KITTI/odometry/data_odometry_full/"
+    DATA_FOLDER : "/mnt/nas3/Data/kitti-odom/dataset"
+    CAMERA_NUM : "image_2"
     OUTPUT_DIR : "./"
+    MAX_R : 1.0
+    MAX_T : 0.1
     WEIGHTS : False
     IMAGE_SHAPE : [256, 512]
 
@@ -47,13 +50,18 @@ MODEL:
 # cfg.RESCALE_TRANSLATION,
 # cfg.RESCALE_ROTATION,
 # cfg.WEIGHT_POINTCLOUD,
+LOSS:
+    NAME: "combine"
+    RESCALE_TRANSLATION: 2.0
+    RESCALE_ROTATION: 1.0
+    WEIGHT_POINTCLOUD: 0.5
 
 OPTIMIZATION:
     BATCH_SIZE_PER_GPU: 2
     NUM_EPOCHS: 140
 
     OPTIMIZER: adam
-    LR: 3e-4
+    LR: 0.0003
     WEIGHT_DECAY: 0.001
     MOMENTUM: 0.9
 

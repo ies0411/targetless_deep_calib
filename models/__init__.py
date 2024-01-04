@@ -8,9 +8,9 @@ from .LCCNet import LCCNet
 __all__ = {"LCCNet": LCCNet}
 
 
-def build_network(model_cfg, dataset):
+def build_network(cfg):
     # model = build_detector(model_cfg=model_cfg, num_class=num_class, dataset=dataset)
-    model = __all__[model_cfg.NAME](model_cfg=model_cfg, dataset=dataset)
+    model = __all__[cfg.MODEL.NAME](cfg=cfg)
 
     return model
 

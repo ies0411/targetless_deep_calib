@@ -11,22 +11,10 @@ def train_model(
     optimizer,
     train_loader,
     lr_scheduler,
-    optim_cfg,
     start_epoch,
     total_epochs,
     start_iter,
     ckpt_save_dir,
-    # train_sampler=None,
-    # lr_warmup_scheduler=None,
-    # ckpt_save_interval=1,
-    # max_ckpt_save_num=50,
-    # merge_all_iters_to_one_epoch=False,
-    # use_amp=False,
-    # use_logger_to_record=False,
-    # logger=None,
-    # logger_iter_interval=None,
-    # ckpt_save_time_interval=None,
-    # show_gpu_stat=False,
     loss_fn,
     cfg=None,
 ):
@@ -64,7 +52,7 @@ def train_model(
                     dataloader_iter = iter(train_loader)
                     batch = next(dataloader_iter)
                     print("new iters")
-
+                print(f"batch : {batch}")
                 lidar_input = []
                 rgb_input = []
                 lidar_gt = []

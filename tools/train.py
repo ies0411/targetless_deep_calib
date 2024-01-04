@@ -62,7 +62,7 @@ def main():
         cfg.DATA_CONFIG, batch_size=batch_size, training=True
     )
 
-    model = build_network(cfg.MODEL, dataset=train_set)
+    model = build_network(cfg)
     print("===build model===")
     # feat = 1
     # md = 4
@@ -77,13 +77,16 @@ def main():
     #     res_num=18,
     # )
     loss_fn = CombinedLoss(
-        cfg.RESCALE_TRANSLATION,
-        cfg.RESCALE_ROTATION,
-        cfg.WEIGHT_POINTCLOUD,
+        cfg.LOSS.RESCALE_TRANSLATION,
+        cfg.LOSS.RESCALE_ROTATION,
+        cfg.LOSS.WEIGHT_POINTCLOUD,
     )
+    print("===set loss===")
     model = model.cuda()
     parameters = list(filter(lambda p: p.requires_grad, model.parameters()))
-    optimizer = optim.Adam(parameters, lr=cfg.LR, weight_decay=cfg.WEIGHT_DECAY)
+    optimizer = optim.Adam(
+        parameters, lr=cfg.OPTIMIZATION.LR, weight_decay=cfg.OPTIMIZATION.WEIGHT_DECAY
+    )
     # Probably this scheduler is not used
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer, milestones=[20, 50, 70], gamma=0.5
@@ -174,7 +177,6 @@ def main():
         optimizer,
         train_loader,
         lr_scheduler=scheduler,
-        optim_cfg=cfg.OPTIMIZATION,
         start_epoch=start_epoch,
         total_epochs=epochs,
         start_iter=it,
