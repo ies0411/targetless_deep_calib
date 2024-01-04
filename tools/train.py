@@ -2,6 +2,7 @@
 # import os
 # import random
 # import time
+import argparse
 from pathlib import Path
 
 # import numpy as np
@@ -12,9 +13,9 @@ import torch.nn as nn
 import torch.nn.parallel
 import torch.optim as optim
 import torch.utils.data
-from dataset import build_dataloader
-from losses import CombinedLoss
+from datasets import build_dataloader
 from models import build_network
+from opt.loss import CombinedLoss
 
 # DistancePoints3D, GeometricLoss, L1Loss, ProposedLoss, CombinedLoss
 # from models.LCCNet import LCCNet
@@ -34,23 +35,35 @@ from utils.utils import cfg_from_yaml_file
 
 # torch.backends.cudnn.enabled = True
 # torch.backends.cudnn.benchmark = False
+def parse_config():
+    parser = argparse.ArgumentParser(description="arg parser")
+    parser.add_argument(
+        "--cfg_file", type=str, default=None, help="specify the config for training"
+    )
+    args = parser.parse_args()
+    cfg = cfg_from_yaml_file(args.cfg_file)
+
+    return args, cfg
 
 
+# TODO : rotation library check
 def main():
-    cfg = cfg_from_yaml_file()
+    args, cfg = parse_config()
+    print("===load config===")
     # params
+
     epochs = cfg.OPTIMIZATION.NUM_EPOCHS
     batch_size = cfg.OPTIMIZATION.BATCH_SIZE_PER_GPU
     output_dir = Path(cfg.DATA_CONFIG.OUTPUT_DIR).resolve()
     ckpt_dir = output_dir / "ckpt"
     output_dir.mkdir(parents=True, exist_ok=True)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
-
     train_set, train_loader, train_sampler = build_dataloader(
         cfg.DATA_CONFIG, batch_size=batch_size, training=True
     )
 
     model = build_network(cfg.MODEL, dataset=train_set)
+    print("===build model===")
     # feat = 1
     # md = 4
     # model = LCCNet(
@@ -182,3 +195,8 @@ def main():
         loss_fn=loss_fn,
         cfg=cfg,
     )
+    print("finish")
+
+
+if __name__ == "__main__":
+    main()

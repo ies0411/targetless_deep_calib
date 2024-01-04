@@ -1,6 +1,9 @@
 import torch
 import torch.nn.functional as F
 import tqdm
+from scipy.spatial.transform import Rotation as R
+
+from .utils import lidar_project_depth, rotate_back
 
 
 def train_model(
@@ -34,7 +37,10 @@ def train_model(
     # augment_disable_flag = False
 
     with tqdm.trange(
-        start_epoch, total_epochs, desc="epochs", dynamic_ncols=True, leave=(rank == 0)
+        start_epoch,
+        total_epochs,
+        desc="epochs",
+        dynamic_ncols=True,
     ) as tbar:
         total_it_each_epoch = len(train_loader)
         dataloader_iter = iter(train_loader)
@@ -46,9 +52,11 @@ def train_model(
             # if lr_warmup_scheduler is not None and cur_epoch < optim_cfg.WARMUP_EPOCH:
             #     cur_scheduler = lr_warmup_scheduler
             # else:
-            #     cur_scheduler = lr_scheduler
+            #
+            cur_scheduler = lr_scheduler
             ckpt_save_cnt = 1
             start_it = accumulated_iter % total_it_each_epoch
+            local_loss = 0.0
             for cur_it in range(start_it, total_it_each_epoch):
                 try:
                     batch = next(dataloader_iter)
@@ -80,41 +88,46 @@ def train_model(
                     ].cuda()  # pointcloud pose in camera plane
                     pc_lidar = batch["point_cloud"][idx].clone()
 
-                    if config["max_depth"] < 80.0:
+                    if cfg.MODEL.MAX_DEPTH < 80.0:
                         pc_lidar = pc_lidar[
-                            :, pc_lidar[0, :] < config["max_depth"]
+                            :, pc_lidar[0, :] < cfg.MODEL.MAX_DEPTH
                         ].clone()
 
                     depth_gt, uv = lidar_project_depth(
                         pc_lidar, batch["calib"][idx], real_shape
                     )  # image_shape
-                    depth_gt /= config["max_depth"]
-
-                    R = mathutils.Quaternion(sample["rot_error"][idx]).to_matrix()
-                    R.resize_4x4()
-                    T = mathutils.Matrix.Translation(sample["tr_error"][idx])
-                    RT = T * R
+                    depth_gt /= cfg.MODEL.MAX_DEPTH
+                    rotation = R.from_quat(batch["rot_error"][idx]).as_matrix()
+                    # R = mathutils.Quaternion(sample["rot_error"][idx]).to_matrix()
+                    # R.resize_4x4()
+                    # T = mathutils.Matrix.Translation(sample["tr_error"][idx])
+                    translation = R.from_matrix(batch["tr_error"][idx])
+                    RT = translation * rotation
+                    RT = RT.as_matrix()
+                    # T * R
 
                     pc_rotated = rotate_back(
-                        sample["point_cloud"][idx], RT
+                        batch["point_cloud"][idx], RT
                     )  # Pc` = RT * Pc
 
-                    if config["max_depth"] < 80.0:
+                    if cfg.MODEL.MAX_DEPTH < 80.0:
                         pc_rotated = pc_rotated[
-                            :, pc_rotated[0, :] < config["max_depth"]
+                            :, pc_rotated[0, :] < cfg.MODEL.MAX_DEPTH
                         ].clone()
 
                     depth_img, uv = lidar_project_depth(
-                        pc_rotated, sample["calib"][idx], real_shape
+                        pc_rotated, batch["calib"][idx], real_shape
                     )  # image_shape
-                    depth_img /= config["max_depth"]
+                    depth_img /= cfg.MODEL.MAX_DEPTH
 
                     # PAD ONLY ON RIGHT AND BOTTOM SIDE
-                    rgb = sample["rgb"][idx].cuda()
+                    rgb = batch["rgb"][idx].cuda()
                     shape_pad = [0, 0, 0, 0]
 
-                    shape_pad[3] = img_shape[0] - rgb.shape[1]  # // 2
-                    shape_pad[1] = img_shape[1] - rgb.shape[2]  # // 2 + 1
+                    shape_pad[3] = cfg.DATA_CONFIG.IMAGE_SHAPE[0] - rgb.shape[1]  # // 2
+                    shape_pad[1] = (
+                        cfg.DATA_CONFIG.IMAGE_SHAPE[1] - rgb.shape[2]
+                    )  # // 2 + 1
 
                     rgb = F.pad(rgb, shape_pad)
                     depth_img = F.pad(depth_img, shape_pad)
@@ -129,8 +142,8 @@ def train_model(
 
                 lidar_input = torch.stack(lidar_input)
                 rgb_input = torch.stack(rgb_input)
-                rgb_show = rgb_input.clone()
-                lidar_show = lidar_input.clone()
+                # rgb_show = rgb_input.clone()
+                # lidar_show = lidar_input.clone()
                 rgb_input = F.interpolate(rgb_input, size=[256, 512], mode="bilinear")
                 lidar_input = F.interpolate(
                     lidar_input, size=[256, 512], mode="bilinear"
@@ -138,18 +151,19 @@ def train_model(
                 # end_preprocess = time.time()
                 ##train
                 model.train()
-
                 optimizer.zero_grad()
 
                 # Run model
-                transl_err, rot_err = model(rgb_img, refl_img)
+                transl_err, rot_err = model(rgb_input, lidar_input)
 
-                if loss == "points_distance" or loss == "combined":
-                    losses = loss_fn(
-                        point_clouds, target_transl, target_rot, transl_err, rot_err
-                    )
-                else:
-                    losses = loss_fn(target_transl, target_rot, transl_err, rot_err)
+                # if loss == "points_distance" or loss == "combined":
+                losses = loss_fn(
+                    batch["point_cloud"],
+                    batch["tr_error"],
+                    batch["rot_error"],
+                    transl_err,
+                    rot_err,
+                )
 
                 losses["total_loss"].backward()
                 optimizer.step()
@@ -164,25 +178,26 @@ def train_model(
                 #     sample["point_cloud"],
                 #     config["loss"],
                 # )
-                for key in loss.keys():
-                    if loss[key].item() != loss[key].item():
+                for key in losses.keys():
+                    if losses[key].item() != losses[key].item():
                         raise ValueError("Loss {} is NaN".format(key))
 
-                trained_epoch = cur_epoch + 1
-                if trained_epoch % ckpt_save_interval == 0 and rank == 0:
-                    ckpt_list = glob.glob(str(ckpt_save_dir / "checkpoint_epoch_*.pth"))
-                    ckpt_list.sort(key=os.path.getmtime)
+                local_loss += losses["total_loss"].item()
+                # trained_epoch = cur_epoch + 1
+                # if trained_epoch % ckpt_save_interval == 0 and rank == 0:
+                #     ckpt_list = glob.glob(str(ckpt_save_dir / "checkpoint_epoch_*.pth"))
+                #     ckpt_list.sort(key=os.path.getmtime)
 
-                    if ckpt_list.__len__() >= max_ckpt_save_num:
-                        for cur_file_idx in range(
-                            0, len(ckpt_list) - max_ckpt_save_num + 1
-                        ):
-                            os.remove(ckpt_list[cur_file_idx])
+                #     if ckpt_list.__len__() >= max_ckpt_save_num:
+                #         for cur_file_idx in range(
+                #             0, len(ckpt_list) - max_ckpt_save_num + 1
+                #         ):
+                #             os.remove(ckpt_list[cur_file_idx])
 
-                    ckpt_name = ckpt_save_dir / ("checkpoint_epoch_%d" % trained_epoch)
-                    save_checkpoint(
-                        checkpoint_state(
-                            model, optimizer, trained_epoch, accumulated_iter
-                        ),
-                        filename=ckpt_name,
-                    )
+                #     ckpt_name = ckpt_save_dir / ("checkpoint_epoch_%d" % trained_epoch)
+                #     save_checkpoint(
+                #         checkpoint_state(
+                #             model, optimizer, trained_epoch, accumulated_iter
+                #         ),
+                #         filename=ckpt_name,
+                #     )

@@ -8,11 +8,16 @@ DATA_CONFIG:
     DATA_FOLDER : "/home/wangshuo/Datasets/KITTI/odometry/data_odometry_full/"
     OUTPUT_DIR : "./"
     WEIGHTS : False
+    IMAGE_SHAPE : [256, 512]
 
 MODEL:
     NAME: LCCNet
     IMAGE_PRETRAINED : "RESNET"
+
+    MAX_DEPTH : 80
     LOSS_CONFIG: "combined"
+    #     img_shape = (384, 1280)  # 网络的输入尺度
+    # input_size = (256, 512)
 
 # def config():
 #     checkpoints = "./checkpoints/"

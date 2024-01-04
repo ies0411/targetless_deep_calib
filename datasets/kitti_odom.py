@@ -2,9 +2,9 @@ import csv
 import os
 from math import radians
 
-import cv2
-import h5py
-import mathutils
+# import cv2
+# import h5py
+# import mathutils
 import numpy as np
 import pandas as pd
 import pykitti
@@ -12,10 +12,13 @@ import torch
 import torchvision.transforms.functional as TTF
 from PIL import Image
 from pykitti import odometry
+from scipy.spatial.transform import Rotation
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import default_collate
 from torchvision import transforms
-from utils import invert_pose, quaternion_from_matrix, read_calib_file, rotate_forward
+from utils.utils import invert_pose, rotate_forward
+
+# quaternion_from_matrix, read_calib_file,
 
 
 # https://github.com/utiasSTARS/pykitti
@@ -293,8 +296,11 @@ class KittiOdomDataset(Dataset):
 
         # Rotate PointCloud for img_rotation
         if self.split == "train":
-            R = mathutils.Euler((radians(img_rotation), 0, 0), "XYZ")
-            T = mathutils.Vector((0.0, 0.0, 0.0))
+            R = Rotation.from_euler("xyz", [radians(img_rotation), 0, 0], degrees=False)
+
+            # R = mathutils.Euler((radians(img_rotation), 0, 0), "XYZ")
+            # T = mathutils.Vector((0.0, 0.0, 0.0))
+            T = Rotation.from_rotvec(np.array([0.0, 0.0, 0.0]))
             pc_in = rotate_forward(pc_in, R, T)
 
         if self.split == "train":
@@ -318,8 +324,10 @@ class KittiOdomDataset(Dataset):
         # 随机设置一定范围内的标定参数扰动值
         # train的时候每次都随机生成,每个epoch使用不同的参数
         # test则在初始化的时候提前设置好,每个epoch都使用相同的参数
-        R = mathutils.Euler((rotx, roty, rotz), "XYZ")
-        T = mathutils.Vector((transl_x, transl_y, transl_z))
+        # R = mathutils.Euler((rotx, roty, rotz), "XYZ")
+        R = Rotation.from_euler("xyz", [rotx, roty, rotz], degrees=False)
+        T = Rotation.from_rotvec(np.array([transl_x, transl_y, transl_z]))
+        # T = mathutils.Vector((transl_x, transl_y, transl_z))
 
         R, T = invert_pose(R, T)
         R, T = torch.tensor(R), torch.tensor(T)
@@ -634,8 +642,10 @@ class DatasetLidarCameraKittiRaw(Dataset):
         # 随机设置一定范围内的标定参数扰动值
         # train的时候每次都随机生成,每个epoch使用不同的参数
         # test则在初始化的时候提前设置好,每个epoch都使用相同的参数
-        R = mathutils.Euler((rotx, roty, rotz), "XYZ")
-        T = mathutils.Vector((transl_x, transl_y, transl_z))
+        # R = mathutils.Euler((rotx, roty, rotz), "XYZ")
+        # T = mathutils.Vector((transl_x, transl_y, transl_z))
+        R = Rotation.from_euler("xyz", [rotx, roty, rotz], degrees=False)
+        T = Rotation.from_rotvec(np.array([transl_x, transl_y, transl_z]))
 
         R, T = invert_pose(R, T)
         R, T = torch.tensor(R), torch.tensor(T)

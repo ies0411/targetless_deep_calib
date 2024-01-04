@@ -1,10 +1,11 @@
 from functools import partial
 
 import torch
-from kitti_odom import KittiOdomDataset
 from torch.utils.data import DataLoader
 from torch.utils.data import DistributedSampler as _DistributedSampler
 from utils.utils import worker_init_fn
+
+from .kitti_odom import KittiOdomDataset
 
 __all__ = {
     "KittiOdom": KittiOdomDataset,

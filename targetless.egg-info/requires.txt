@@ -1,0 +1,17 @@
+SharedArray==3.2.2
+easydict==1.10
+filelock>=3.0.12
+filterpy==1.4.5
+kornia==0.6.11
+mypy_extensions
+natsort>=7.1.1
+numpy>=1.18.5
+open3d==0.17.0
+opencv-contrib-python==4.4.0.46
+opencv-python==4.4.0.46
+pynvml>=8.0.4
+pyquaternion==0.9.9
+pyyaml==5.4.1
+scipy>=1.5.4
+timm>=0.4.12
+toml>=0.10.2

@@ -5,32 +5,35 @@ Modified version (CMRNet) by Daniele Cattaneo
 Modified version (LCCNet) by Xudong Lv
 """
 
-import argparse
-import math
-import os
-import os.path
+# import argparse
+# import math
+# import os
+# import os.path
 
-import matplotlib.image as mpimg
-import matplotlib.pyplot as plt
+# import matplotlib.image as mpimg
+# import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
 # from models.CMRNet.modules.attention import *
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
-import torch.utils.model_zoo as model_zoo
-import torchvision
+
+# import torch.optim as optim
+# import torch.utils.model_zoo as model_zoo
+# import torchvision
 import torchvision.models as models
-import torchvision.transforms as transforms
-from PIL import Image
+
+# from PIL import Image
 from torch.autograd import Variable
 
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
-
+# import torchvision.transforms as transforms
 # from .networks.submodules import *
 # from .networks.correlation_package.correlation import Correlation
-from correlation_package.correlation import Correlation
+from .custom.correlation import Correlation
+
+# os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
+
 
 # __all__ = [
 #     'calib_net'
