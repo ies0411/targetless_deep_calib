@@ -153,6 +153,7 @@ def train_model(
                 )
 
                 losses["total_loss"].backward()
+                print("backward?")
                 optimizer.step()
                 # loss, R_predicted, T_predicted = train(
                 #     model,

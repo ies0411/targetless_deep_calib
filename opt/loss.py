@@ -142,6 +142,7 @@ class CombinedLoss(nn.Module):
         Returns:
             The combination loss of Pose error and the mean distance between 3D points
         """
+        # print("total loss start!!")
         loss_transl = 0.0
         if self.rescale_trans != 0.0:
             loss_transl = self.transl_loss(transl_err, target_transl).sum(1).mean()
@@ -152,6 +153,7 @@ class CombinedLoss(nn.Module):
 
         # start = time.time()
         point_clouds_loss = torch.tensor([0.0]).to(transl_err.device)
+        # print("2")
         for i in range(len(point_clouds)):
             point_cloud_gt = point_clouds[i].to(transl_err.device)
             point_cloud_out = point_clouds[i].clone()
@@ -183,5 +185,6 @@ class CombinedLoss(nn.Module):
         self.loss["transl_loss"] = loss_transl
         self.loss["rot_loss"] = loss_rot
         self.loss["point_clouds_loss"] = point_clouds_loss / target_transl.shape[0]
-
+        # print("3")
+        print(f"loss : {self.loss}")
         return self.loss

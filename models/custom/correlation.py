@@ -113,6 +113,8 @@ from models.custom import correlation_cuda
 from torch.autograd import Function
 from torch.nn.modules.module import Module
 
+# TODO : change input shape
+
 
 class CorrelationFunction(Function):
     @staticmethod
