@@ -1,15 +1,17 @@
 import math
 import random
 
-# import mathutils
+import mathutils
 import numpy as np
 import torch
 import torch.nn.functional as F
+
 # import tqdm
 import yaml
 from easydict import EasyDict
 from matplotlib import cm
-from scipy.spatial.transform import Rotation
+
+# from scipy.spatial.transform import Rotation
 from torch.utils.data.dataloader import default_collate
 
 
@@ -68,12 +70,10 @@ def lidar_project_depth(pc_rotated, cam_calib, img_shape):
 
 def rotate_points(PC, R, T=None, inverse=True):
     if T is not None:
-        R = R.as_matrix()
-        # R.resize_4x4()
-        T = Rotation.from_matrix(T)
-        # T = mathutils.Matrix.Translation(T)
-        # T = R.
-        RT = T * R
+        R = R.to_matrix()
+        R.resize_4x4()
+        T = mathutils.Matrix.Translation(T)
+        RT = T @ R
     else:
         RT = R.copy()
     if inverse:
@@ -160,14 +160,16 @@ def invert_pose(R, T):
         (R_GT, T_GT) = (mathutils.Quaternion, mathutils.Vector)
     """
     R = R.to_matrix()
-    R = Rotation.as_matrix()
-    # R.resize_4x4()
-    T = Rotation.from_matrix(T)
-    # T = mathutils.Matrix.Translation(T)
-    RT = T * R
-    # RT.invert_safe()
-    RT.inv()
+    R.resize_4x4()
+    T = mathutils.Matrix.Translation(T)
+    RT = T @ R
+    # print(f"RT :{RT}")
+    RT.invert_safe()
+    # print(f"RTinv : {RT}")
     T_GT, R_GT, _ = RT.decompose()
+    # print(f"TGT : {T_GT}")
+    # print(f"RGT : {R_GT}")
+    # print(f" R_GT.normalized() : { R_GT.normalized()}")
     return R_GT.normalized(), T_GT
 
 

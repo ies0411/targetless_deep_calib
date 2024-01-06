@@ -4,7 +4,7 @@ from math import radians
 
 # import cv2
 # import h5py
-# import mathutils
+import mathutils
 import numpy as np
 import pandas as pd
 import pykitti
@@ -12,7 +12,7 @@ import torch
 import torchvision.transforms.functional as TTF
 from PIL import Image
 from pykitti import odometry
-from scipy.spatial.transform import Rotation
+# from scipy.spatial.transform import Rotation
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import default_collate
 from torchvision import transforms
@@ -197,7 +197,7 @@ class KittiOdomDataset(Dataset):
         )
 
         # rgb = crop(rgb)
-        if self.training == "train":
+        if self.training is True:
             color_transform = transforms.ColorJitter(0.1, 0.1, 0.1)
             rgb = color_transform(rgb)
             if flip:
@@ -302,17 +302,13 @@ class KittiOdomDataset(Dataset):
         except OSError:
             new_idx = np.random.randint(0, self.__len__())
             return self.__getitem__(new_idx)
-
         # Rotate PointCloud for img_rotation
-        if self.training == "train":
-            R = Rotation.from_euler("xyz", [radians(img_rotation), 0, 0], degrees=False)
-
-            # R = mathutils.Euler((radians(img_rotation), 0, 0), "XYZ")
-            # T = mathutils.Vector((0.0, 0.0, 0.0))
-            T = Rotation.from_rotvec(np.array([0.0, 0.0, 0.0]))
+        if self.training is True:
+            R = mathutils.Euler((radians(img_rotation), 0, 0))  # XYZ?
+            T = mathutils.Vector((0.0, 0.0, 0.0))
             pc_in = rotate_forward(pc_in, R, T)
 
-        if self.training == "train":
+        if self.training is True:
             max_angle = self.max_r
             rotz = np.random.uniform(-max_angle, max_angle) * (3.141592 / 180.0)
             roty = np.random.uniform(-max_angle, max_angle) * (3.141592 / 180.0)
@@ -334,20 +330,20 @@ class KittiOdomDataset(Dataset):
         # train的时候每次都随机生成,每个epoch使用不同的参数
         # test则在初始化的时候提前设置好,每个epoch都使用相同的参数
         # R = mathutils.Euler((rotx, roty, rotz), "XYZ")
-        R = Rotation.from_euler("xyz", [rotx, roty, rotz], degrees=False)
-        T = Rotation.from_rotvec(np.array([transl_x, transl_y, transl_z]))
-        # T = mathutils.Vector((transl_x, transl_y, transl_z))
+        R = mathutils.Euler((rotx, roty, rotz))
+        T = mathutils.Vector((transl_x, transl_y, transl_z))
 
         R, T = invert_pose(R, T)
         R, T = torch.tensor(R), torch.tensor(T)
 
         # io.imshow(depth_img.numpy(), cmap='jet')
         # io.show()
+        # calib = calib_cam02
         calib = self.K[seq]
         if h_mirror:
             calib[2] = (img.shape[2] / 2) * 2 - calib[2]
 
-        if self.training == "test":
+        if self.training is not True:
             sample = {
                 "rgb": img,
                 "point_cloud": pc_in,

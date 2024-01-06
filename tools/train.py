@@ -82,7 +82,9 @@ def main():
         cfg.LOSS.WEIGHT_POINTCLOUD,
     )
     print("===set loss===")
+    model = nn.DataParallel(model)
     model = model.cuda()
+
     parameters = list(filter(lambda p: p.requires_grad, model.parameters()))
     optimizer = optim.Adam(
         parameters, lr=cfg.OPTIMIZATION.LR, weight_decay=cfg.OPTIMIZATION.WEIGHT_DECAY

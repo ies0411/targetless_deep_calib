@@ -1,7 +1,8 @@
+# from scipy.spatial.transform import Rotation as R
+import mathutils
 import torch
 import torch.nn.functional as F
 import tqdm
-from scipy.spatial.transform import Rotation as R
 
 from .utils import lidar_project_depth, rotate_back
 
@@ -52,7 +53,7 @@ def train_model(
                     dataloader_iter = iter(train_loader)
                     batch = next(dataloader_iter)
                     print("new iters")
-                print(f"batch : {batch}")
+                # print(f"batch : {batch}")
                 lidar_input = []
                 rgb_input = []
                 lidar_gt = []
@@ -85,14 +86,11 @@ def train_model(
                         pc_lidar, batch["calib"][idx], real_shape
                     )  # image_shape
                     depth_gt /= cfg.MODEL.MAX_DEPTH
-                    rotation = R.from_quat(batch["rot_error"][idx]).as_matrix()
-                    # R = mathutils.Quaternion(sample["rot_error"][idx]).to_matrix()
-                    # R.resize_4x4()
-                    # T = mathutils.Matrix.Translation(sample["tr_error"][idx])
-                    translation = R.from_matrix(batch["tr_error"][idx])
-                    RT = translation * rotation
-                    RT = RT.as_matrix()
-                    # T * R
+                    R = mathutils.Quaternion(batch["rot_error"][idx]).to_matrix()
+                    R.resize_4x4()
+                    T = mathutils.Matrix.Translation(batch["tr_error"][idx])
+                    # RT = T * R
+                    RT = T @ R
 
                     pc_rotated = rotate_back(
                         batch["point_cloud"][idx], RT
@@ -143,7 +141,8 @@ def train_model(
 
                 # Run model
                 transl_err, rot_err = model(rgb_input, lidar_input)
-
+                print(f"transl_err : {transl_err}")
+                print(f"rot_err : {rot_err}")
                 # if loss == "points_distance" or loss == "combined":
                 losses = loss_fn(
                     batch["point_cloud"],
